@@ -1,0 +1,143 @@
+
+<html>
+<head>
+    <title>Bintu Stream List</title>
+    <link rel="stylesheet" href="./style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+</head>
+
+<body>
+<div id="title">
+  <h1>Bintu Stream List</h1>
+  <label>Example usage: ...html?</label><br/>
+  <label>state=live&offset=0&quantity=50&tags[]=stream1&tags[]=highres&bintu.playerkey=YOUR_BINTU_PLAYER_KEY</label>
+</div>
+<div id="listdiv" style="height:400px">
+  <ul id="list" style="height:400px;font-size:18px"></ul>
+</div>
+<script>
+
+const bintuRoute = 'https://bintu.nanocosmos.de/stream/public';
+const playerUrlBase = 'https://demo.nanocosmos.de/nanoplayer/release/nanoplayer-adaptive.html?playback.latencyControlMode=balancedadaptive&faststart=true&group.startQuality=low';
+const bintuDocsUrl = 'https://doc.pages.nanocosmos.de/bintuapi-docs/#operation/Public%20Stream%20Collection%20Info';
+
+function addToEventLog(text, url, severity = 'info') {
+    let log = document.getElementById('list');
+    let mostRecentEntry = log.lastElementChild;
+    let entry = document.createElement('li');
+    entry.innerText = text;
+	
+	if(url) {
+	    // open player on double click
+	    entry.ondblclick = function() {
+	        window.open(url, '_blank').focus();
+	    }
+	}
+	
+    log.appendChild(entry);
+
+    if (mostRecentEntry != null &&
+        mostRecentEntry.getBoundingClientRect().top < log.getBoundingClientRect().bottom) {
+        entry.scrollIntoView();
+    }
+}
+
+function clearlog() {
+	let log = document.getElementById('list');
+	log.innerHTML = '';
+}
+
+function displayError(error) {
+    if(error && typeof error === 'object') {
+        addToEventLog(`The bintu request failed: code: ${error.code} message: ${error.message}`, bintuDocsUrl);
+    }
+}
+
+function displayStream(stream) {
+    try {
+        if(stream && typeof stream === 'object') {
+            let groupid = stream.streamgroup || '-';
+		    let streamid = stream.id || '-';
+		    let streamname = (stream.playout.h5live[0]) ? stream.playout.h5live[0].rtmp.streamname : '-';
+		    let updatedAt = stream.updatedAt || '-';
+		    let state = stream.state || '-';
+		    let playerUrl = `${playerUrlBase}&group.id=${streamid}`;
+            addToEventLog(`streamid: ${streamid} groupid: ${groupid} \n streamname: ${streamname} \n updatedAt: ${updatedAt} \n state: ${state}`, playerUrl);
+        }
+    } catch(e) {
+	    addToEventLog(`An error occured parsing this item: ${e.message}`);
+	}
+}
+
+function displayStreamList(responseObj) {
+	if(responseObj && typeof responseObj === 'object') {
+	    if(responseObj.error) {
+		    displayError(responseObj.error)
+		} else {
+	        responseObj.forEach((element) => displayStream(element));
+		}
+	}
+}
+
+function getStreamsPublic() {
+	const params = new URLSearchParams(window.location.search);
+	const playerkey = params.get('bintu.playerkey') || params.get('playerkey') || '';
+	const state = params.get('state') ? ('state=' + params.get('state')) : '';
+	const offset = params.get('offset') || '0';
+	const quantity = params.get('quantity') || '50';
+	let tagparam = params.getAll('tag');
+	if(tagparam.length==0) tagparam = params.getAll('tags[]');
+	
+	clearlog();
+	
+	if(!((typeof playerkey === 'string') && (0 < playerkey.length))) {
+	    addToEventLog('Please add your bintu player key. ...&bintu.playerkey=YOUR_BINTU_PLAYER_KEY');
+		return;
+	}
+	
+	var tags = '';
+	tagparam.forEach((element) => {
+	    if(0 < tags.length) tags += '&';
+	    tags += 'tags[]=' + element;
+	});
+	if(!tags.length) tags = 'tags[]=';
+
+	const url = `${bintuRoute}?${state}&${tags}&offset=${offset}&quantity=${quantity}`;
+
+	fetch(url, { headers: { 'x-bintu-playerkey': playerkey }, })
+	.then((response) => { return response.json(); })
+  	.then((data) => { displayStreamList(data); })
+	.catch(err => addToEventLog(err));
+
+}
+	
+
+const observer = new PerformanceObserver((list) => {
+  list.getEntries().forEach((entry) => {
+    const timeToFetch = entry.responseEnd - entry.fetchStart;
+    if (timeToFetch > 0) {
+      console.log(`${entry.name}: Time to fetch: ${timeToFetch}ms`);
+    }
+
+    const tcp = entry.connectEnd - entry.connectStart;
+    if (tcp > 0) {
+      console.log(`${entry.name}: TCP handshake duration: ${tcp}ms`);
+    }
+
+    const dns = entry.domainLookupEnd - entry.domainLookupStart;
+    if (dns > 0) {
+      console.log(`${entry.name}: DNS lookup duration: ${dns}ms`);
+    }
+
+  });
+});
+
+observer.observe({ type: "resource", buffered: true });
+
+document.addEventListener('DOMContentLoaded', function () {
+    getStreamsPublic();
+});
+</script>
+</body>
+</html>
+
